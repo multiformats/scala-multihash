@@ -3,7 +3,6 @@ package io.mediachain.util
 import java.util
 
 import cats.data.Xor
-import io.mediachain.Types.Hashable
 import io.mediachain.util.MultiHash.HashType
 import io.mediachain.util.MultiHashError._
 
@@ -55,10 +54,6 @@ object MultiHash {
       .getOrElse(throw new IllegalStateException("Creation of SHA-256 MultiHash failed."))
   }
 
-
-  def forHashable[H <: Hashable](h: H): MultiHash = {
-    hashWithSHA256(CborSerializer.bytesForHashable(h))
-  }
 
   def fromHash(hashType: HashType, hash: Array[Byte]): Xor[MultiHashError, MultiHash] = {
     if (hash.length > 127) {
