@@ -1,10 +1,10 @@
-package io.mediachain.util
+package io.mediachain.multihash
 
 import java.util
 
 import cats.data.Xor
-import io.mediachain.util.MultiHash.HashType
-import io.mediachain.util.MultiHashError._
+import io.mediachain.multihash.MultiHash.HashType
+import io.mediachain.multihash.MultiHashError._
 
 
 sealed abstract class MultiHashError

@@ -1,4 +1,4 @@
-package io.mediachain.util
+package io.mediachain.multihash
 
 import java.math.BigInteger
 
