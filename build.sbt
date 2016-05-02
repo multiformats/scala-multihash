@@ -1,7 +1,7 @@
 lazy val root = (project in file(".")).
   settings(
     name := "multihash",
-    version := "0.1",
+    version := "0.1-SNAPSHOT",
     scalaVersion := "2.11.7",
     libraryDependencies ++= Seq(
         "org.typelevel" %% "cats" % "0.4.1",
