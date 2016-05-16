@@ -21,6 +21,7 @@ object MultiHash {
   import scala.language.implicitConversions
 
   sealed abstract class HashType(val name: String, val index: Byte, val length: Byte)
+    extends Serializable
 
   case object sha1 extends HashType("SHA-1", 0x11, 20)
   case object sha256 extends HashType("SHA-256", 0x12, 32)
