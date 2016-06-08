@@ -70,12 +70,12 @@ object MultiHash {
 
 
   def fromBytes(multihash: Array[Byte]): Xor[MultiHashError, MultiHash] = {
-    val index = multihash(0)
-    val hash = multihash.drop(2)
-    val hashTypeXor: Xor[MultiHashError, HashType] =
-      Xor.fromOption(lookup.get(index), UnknownMultiHashType("Unknown MultiHash type " + index))
-
-    hashTypeXor.flatMap(fromHash(_, hash))
+    for {
+      index <- Xor.fromOption(multihash.headOption, DecodingFailed("No multihash code present"))
+      hashType <- Xor.fromOption(lookup.get(index), UnknownMultiHashType("Unknown MultiHash type " + index))
+      hash = multihash.drop(2)
+      result <- fromHash(hashType, hash)
+    } yield result
   }
 
 
