@@ -1,6 +1,7 @@
 package io.mediachain.multiaddr
 
-import java.io.{ByteArrayOutputStream, IOException}
+import java.io.ByteArrayOutputStream
+import java.net.UnknownHostException
 import java.nio.ByteBuffer
 
 import cats.data.Xor
@@ -14,13 +15,17 @@ case class MultiAddress private(bytes: Array[Byte]) {
     .getOrElse(throw new IllegalStateException(
       "Unable to encode multiaddr to string"))
 
-  override def toString: String =
-    s"[MultiAddress]: $asString"
+  override def toString: String = {
+    MultiAddress.encodeToString(bytes)
+      .map (str => s"[MultiAddress]: $str")
+      .getOrElse("[MultiAddress]: Invalid")
+  }
 
 }
 
 object MultiAddress {
   import java.net.InetAddress
+  import io.mediachain.multiaddr.MultiAddressError._
 
   def protocolFor(bytes: Array[Byte]): Xor[MultiAddressError, Protocol] = {
     val buf = ByteBuffer.wrap(bytes)
@@ -68,7 +73,12 @@ object MultiAddress {
       bout.toByteArray
     }
 
-    bytesXor.map(MultiAddress.apply)
+    for {
+      bytes <- bytesXor
+      _ <- encodeToString(bytes)
+    } yield {
+      MultiAddress(bytes)
+    }
   }
 
   private def encodeToString(raw: Array[Byte]):
@@ -80,6 +90,11 @@ object MultiAddress {
         proto <- Xor.fromOption(Protocol.get(code),
           UnknownProtocolCode(code))
         addrOpt <- readAddress(proto, buf)
+        _ <- if (proto.size != 0 && addrOpt.isEmpty) {
+          Xor.left(InvalidFormat("Failed to encode address"))
+        } else {
+          Xor.right({})
+        }
       } yield {
         val out = new StringBuilder
         out.append(s"/${proto.name}")
@@ -113,7 +128,7 @@ object MultiAddress {
           addressBuffer.get(buf)
           MultiHash.fromBytes(buf)
             .map(hash => Some(hash.base58))
-            .leftMap(_ => InvalidFormat)
+            .leftMap(InvalidMultihash)
 
         case Protocol.onion =>
           val host = new Array[Byte](10)
@@ -131,17 +146,22 @@ object MultiAddress {
   Xor[MultiAddressError, Array[Byte]] = {
     protocol match {
       case Protocol.ip4 | Protocol.ip6 =>
-        Xor.right(InetAddress.getByName(address).getAddress)
+        Xor.catchOnly[UnknownHostException](
+          InetAddress.getByName(address).getAddress
+        ).leftMap(_ => UnknownHost(address))
 
       case Protocol.tcp | Protocol.udp | Protocol.dccp | Protocol.sctp =>
-        val x = Integer.parseInt(address)
-        if (x > 65535) {
-          Xor.left(StringDecodingError(
-            s"Failed to parse ${protocol.name} address $address: " +
-            "value > 65535"))
-        } else {
-          Xor.right(Array((x >> 8).toByte, x.toByte))
-        }
+        Xor.catchOnly[NumberFormatException](Integer.parseInt(address))
+          .leftMap(err => InvalidFormat(err.toString))
+          .flatMap { x =>
+            if (x > 65535) {
+              Xor.left(StringDecodingError(
+                s"Failed to parse ${protocol.name} address $address: " +
+                  "value > 65535"))
+            } else {
+              Xor.right(Array((x >> 8).toByte, x.toByte))
+            }
+          }
 
       case Protocol.ipfs =>
         MultiHash.fromBase58(address)
@@ -151,7 +171,7 @@ object MultiAddress {
             Varint.writeUnsignedInt(hashBytes.length, buf)
             buf ++= hashBytes
             buf.toArray
-          }.leftMap(_ => InvalidFormat)
+          }.leftMap(InvalidMultihash)
 
       case Protocol.onion =>
         // TODO
