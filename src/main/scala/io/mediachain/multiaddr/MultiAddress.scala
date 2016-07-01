@@ -9,6 +9,14 @@ import io.mediachain.multihash.MultiHash
 
 case class MultiAddress private(bytes: Array[Byte]) {
 
+  def asString: String =
+    MultiAddress.encodeToString(bytes)
+    .getOrElse(throw new IllegalStateException(
+      "Unable to encode multiaddr to string"))
+
+  override def toString: String =
+    s"[MultiAddress]: $asString"
+
 }
 
 object MultiAddress {
@@ -23,12 +31,9 @@ object MultiAddress {
   }
 
   def fromBytes(bytes: Array[Byte]): Xor[MultiAddressError, MultiAddress] = {
-    for {
-      protocol <- protocolFor(bytes)
-
-    }
-
-    ???
+    // encode to string to check validity
+    encodeToString(bytes)
+      .map(_ => MultiAddress(bytes))
   }
 
   def fromString(string: String): Xor[MultiAddressError, MultiAddress] = {
@@ -66,34 +71,54 @@ object MultiAddress {
     bytesXor.map(MultiAddress.apply)
   }
 
+  private def encodeToString(raw: Array[Byte]):
+  Xor[MultiAddressError, String] = {
+    val buf = ByteBuffer.wrap(raw)
+    val resXor = IOError.catchIOException {
+      val code = Varint.readUnsignedInt(buf)
+      for {
+        proto <- Xor.fromOption(Protocol.get(code),
+          UnknownProtocolCode(code))
+        addrOpt <- readAddress(proto, buf)
+      } yield {
+        val out = new StringBuilder
+        out.append(s"/${proto.name}")
+        addrOpt.foreach { addr =>
+          out.append(s"/$addr")
+        }
+        out.toString
+      }
+    }
 
-  def readAddress(protocol: Protocol, addressBytes: Array[Byte]):
+    resXor.flatMap { res => res}
+  }
+
+  def readAddress(protocol: Protocol, addressBuffer: ByteBuffer):
   Xor[MultiAddressError, Option[String]] = {
-    val readBuffer = ByteBuffer.wrap(addressBytes)
-    val size = protocol.sizeForAddress(readBuffer)
+    val size = protocol.sizeForAddress(addressBuffer)
     if (size == 0) {
       Xor.right(None)
     } else {
       protocol match {
-        case ip4 | ip6 =>
+        case Protocol.ip4 | Protocol.ip6 =>
           val buf = new Array[Byte](size)
-          readBuffer.get(buf)
+          addressBuffer.get(buf)
           Xor.right(Some(InetAddress.getByAddress(buf).toString.substring(1)))
 
-        case tcp | udp | dccp | sctp =>
-          Xor.right(Some(Integer.toString(readBuffer.getShort())))
+        case Protocol.tcp | Protocol.udp | Protocol.dccp | Protocol.sctp =>
+          Xor.right(Some(Integer.toString(addressBuffer.getShort())))
 
-        case ipfs =>
+        case Protocol.ipfs =>
           val buf = new Array[Byte](size)
-          readBuffer.get(buf)
+          addressBuffer.get(buf)
           MultiHash.fromBytes(buf)
             .map(hash => Some(hash.base58))
             .leftMap(_ => InvalidFormat)
 
-        case onion =>
+        case Protocol.onion =>
           val host = new Array[Byte](10)
-          readBuffer.get(host)
-          val port = Integer.toString(readBuffer.getShort)
+          addressBuffer.get(host)
+          val port = Integer.toString(addressBuffer.getShort)
           val str = s"${Base32.encode(host)}:$port"
           Xor.right(Some(str))
 
@@ -105,10 +130,10 @@ object MultiAddress {
   def addressToBytes(protocol: Protocol, address: String):
   Xor[MultiAddressError, Array[Byte]] = {
     protocol match {
-      case ip4 | ip6 =>
+      case Protocol.ip4 | Protocol.ip6 =>
         Xor.right(InetAddress.getByName(address).getAddress)
 
-      case tcp | udp | dccp | sctp =>
+      case Protocol.tcp | Protocol.udp | Protocol.dccp | Protocol.sctp =>
         val x = Integer.parseInt(address)
         if (x > 65535) {
           Xor.left(StringDecodingError(
@@ -118,7 +143,7 @@ object MultiAddress {
           Xor.right(Array((x >> 8).toByte, x.toByte))
         }
 
-      case ipfs =>
+      case Protocol.ipfs =>
         MultiHash.fromBase58(address)
           .map { hash =>
             val buf = collection.mutable.ArrayBuffer.empty[Byte]
@@ -128,7 +153,7 @@ object MultiAddress {
             buf.toArray
           }.leftMap(_ => InvalidFormat)
 
-      case onion =>
+      case Protocol.onion =>
         // TODO
         Xor.left(UnimplementedProtocol(protocol))
 
