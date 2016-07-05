@@ -2,7 +2,7 @@ lazy val root = (project in file(".")).
   settings(
     organization := "io.mediachain",
     name := "multihash",
-    version := "0.1-SNAPSHOT",
+    version := "0.1.0",
     scalaVersion := "2.11.7",
     libraryDependencies ++= Seq(
         "org.typelevel" %% "cats" % "0.4.1",
